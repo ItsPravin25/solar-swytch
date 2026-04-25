@@ -5,6 +5,8 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "db:test": "tsx scripts/start-test-db.ts",
+    "seed:boq": "tsx scripts/seed-boq.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "jest",
@@ -29,9 +31,10 @@
     "@types/jsonwebtoken": "^9.0.6",
     "@types/morgan": "^1.9.9",
     "@types/node": "^20.11.0",
-    "jest": "^29.7.0",
-    "supertest": "^6.3.4",
     "@types/supertest": "^6.0.2",
+    "jest": "^29.7.0",
+    "mongodb-memory-server": "^11.0.1",
+    "supertest": "^6.3.4",
     "ts-jest": "^29.1.2",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3"

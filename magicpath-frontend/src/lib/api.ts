@@ -105,4 +105,14 @@ export const calculationsApi = {
     apiClient.post<{ emi: number; totalPayable: number; totalInterest: number }>('/calculations/emi', data),
 };
 
+// BOQ API
+export const boqApi = {
+  list: () =>
+    apiClient.get<{ boqKey: string }[]>('/boq'),
+  get: (key: string) =>
+    apiClient.get<{ boqKey: string; rows: any[] }>(`/boq/${encodeURIComponent(key)}`),
+  upsert: (boqKey: string, rows: any[]) =>
+    apiClient.post<{ boqKey: string; rows: any[] }>('/boq', { boqKey, rows }),
+};
+
 export default apiClient;

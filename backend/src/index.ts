@@ -12,6 +12,7 @@ import { pricingRouter } from './routes/pricing.js';
 import { profileRouter } from './routes/profile.js';
 import { settingsRouter } from './routes/settings.js';
 import { calculationsRouter } from './routes/calculations.js';
+import { boqRouter } from './routes/boq.js';
 
 config();
 
@@ -48,6 +49,7 @@ app.use('/api/v1/pricing', pricingRouter);
 app.use('/api/v1/profile', profileRouter);
 app.use('/api/v1/settings', settingsRouter);
 app.use('/api/v1/calculations', calculationsRouter);
+app.use('/api/v1/boq', boqRouter);
 
 // Error handler
 app.use(errorHandler);
