@@ -1,4 +1,4 @@
-import { prisma } from '../config/database.js';
+import { Settings } from '../models/settings.model.js';
 import type { GstSettingsInput, TechnicalSettingsInput } from '../types/index.js';
 
 const DEFAULT_PANEL_TYPES = [
@@ -9,17 +9,14 @@ const DEFAULT_PANEL_TYPES = [
 
 export class SettingsService {
   async getGstSettings(userId: string) {
-    let settings = await prisma.userSettings.findUnique({
-      where: { userId },
-    });
+    let settings = await Settings.findOne({ userId });
 
     if (!settings) {
-      settings = await prisma.userSettings.create({
-        data: {
-          userId,
-          gstPercentage: 18,
-          includeGst: true,
-        },
+      settings = await Settings.create({
+        userId,
+        gstPercentage: 18,
+        includeGst: true,
+        panelTypes: DEFAULT_PANEL_TYPES,
       });
     }
 
@@ -30,51 +27,41 @@ export class SettingsService {
   }
 
   async updateGstSettings(userId: string, data: GstSettingsInput) {
-    const settings = await prisma.userSettings.upsert({
-      where: { userId },
-      update: data,
-      create: {
-        userId,
-        ...data,
-      },
-    });
+    await Settings.findOneAndUpdate(
+      { userId },
+      { $set: { gstPercentage: data.gstPercentage, includeGst: data.includeGst } },
+      { upsert: true, new: true }
+    );
 
     return {
-      gstPercentage: settings.gstPercentage,
-      includeGst: settings.includeGst,
+      gstPercentage: data.gstPercentage,
+      includeGst: data.includeGst,
     };
   }
 
   async getTechnicalSettings(userId: string) {
-    let settings = await prisma.userSettings.findUnique({
-      where: { userId },
-    });
+    let settings = await Settings.findOne({ userId });
 
     if (!settings) {
-      settings = await prisma.userSettings.create({
-        data: {
-          userId,
-          panelTypes: DEFAULT_PANEL_TYPES,
-        },
+      settings = await Settings.create({
+        userId,
+        gstPercentage: 18,
+        includeGst: true,
+        panelTypes: DEFAULT_PANEL_TYPES,
       });
     }
 
-    const panelTypes = (settings.panelTypes as typeof DEFAULT_PANEL_TYPES) || DEFAULT_PANEL_TYPES;
-
-    return { panelTypes };
+    return { panelTypes: settings.panelTypes || DEFAULT_PANEL_TYPES };
   }
 
   async updateTechnicalSettings(userId: string, data: TechnicalSettingsInput) {
-    const settings = await prisma.userSettings.upsert({
-      where: { userId },
-      update: { panelTypes: data.panelTypes },
-      create: {
-        userId,
-        panelTypes: data.panelTypes,
-      },
-    });
+    await Settings.findOneAndUpdate(
+      { userId },
+      { $set: { panelTypes: data.panelTypes } },
+      { upsert: true, new: true }
+    );
 
-    return { panelTypes: settings.panelTypes as typeof DEFAULT_PANEL_TYPES };
+    return { panelTypes: data.panelTypes };
   }
 }
 

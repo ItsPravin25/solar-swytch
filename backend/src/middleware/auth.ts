@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { prisma } from '../config/database.js';
+import { User } from '../models/user.model.js';
 import { AppError } from './error-handler.js';
 
 export interface JwtPayload {
@@ -75,31 +75,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
 }
 
 export async function getUserById(userId: string) {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: {
-      id: true,
-      email: true,
-      fullName: true,
-      phone: true,
-      businessType: true,
-      role: true,
-      companyName: true,
-      gstNumber: true,
-      address: true,
-      state: true,
-      city: true,
-      pincode: true,
-      primaryContact: true,
-      alternateContact: true,
-      bankName: true,
-      accountNumber: true,
-      ifscCode: true,
-      logoUrl: true,
-      profilePhoto: true,
-      createdAt: true,
-    },
-  });
+  const user = await User.findById(userId).select('-password');
 
   if (!user) {
     throw new AppError('User not found', 404);

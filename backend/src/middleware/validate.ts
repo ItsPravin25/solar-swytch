@@ -11,7 +11,8 @@ export function validate(schema: ZodSchema) {
     } catch (error) {
       if (error instanceof ZodError) {
         const messages = error.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
-        throw new AppError(messages.join(', '), 400);
+        next(new AppError(messages.join(', '), 400));
+        return;
       }
       next(error);
     }
@@ -22,12 +23,14 @@ export function validateQuery(schema: ZodSchema) {
   return async (req: Request, _res: Response, next: NextFunction) => {
     try {
       const data = schema.parse(req.query);
-      req.query = data as Record<string, string>;
+      // Zod coerces values, store them back but keep original params
+      (req as Request & { parsedQuery?: Record<string, unknown> }).parsedQuery = data;
       next();
     } catch (error) {
       if (error instanceof ZodError) {
         const messages = error.errors.map((e) => `${e.path.join('.')}: ${e.message}`);
-        throw new AppError(messages.join(', '), 400);
+        next(new AppError(messages.join(', '), 400));
+        return;
       }
       next(error);
     }

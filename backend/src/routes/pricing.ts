@@ -5,7 +5,7 @@ import { validate } from '../middleware/validate.js';
 import { pricingBulkUpdateSchema, pricingUpdateSchema } from '../types/index.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 import type { ApiResponse } from '../types/index.js';
-import type { Pricing } from '@prisma/client';
+import type { IIPricing } from '../models/pricing.model.js';
 
 const router = Router();
 
@@ -39,7 +39,7 @@ router.put('/:id',
     res.json({
       success: true,
       data: item,
-    } as ApiResponse<Pricing>);
+    } as ApiResponse<IPricing>);
   })
 );
 

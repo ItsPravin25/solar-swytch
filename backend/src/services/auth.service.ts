@@ -1,13 +1,13 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import { prisma } from '../config/database.js';
+import { User } from '../models/user.model.js';
+import { Settings } from '../models/settings.model.js';
+import { Pricing } from '../models/pricing.model.js';
 import type { RegisterInput, LoginInput } from '../types/index.js';
 
 export class AuthService {
   async register(data: RegisterInput) {
-    const existingUser = await prisma.user.findUnique({
-      where: { email: data.email },
-    });
+    const existingUser = await User.findOne({ email: data.email.toLowerCase() });
 
     if (existingUser) {
       throw new Error('Email already registered');
@@ -15,36 +15,22 @@ export class AuthService {
 
     const hashedPassword = await bcrypt.hash(data.password, 10);
 
-    const user = await prisma.user.create({
-      data: {
-        email: data.email,
-        password: hashedPassword,
-        fullName: data.fullName,
-        phone: data.phone,
-        companyName: data.companyName,
-      },
-      select: {
-        id: true,
-        email: true,
-        fullName: true,
-        phone: true,
-        companyName: true,
-        createdAt: true,
-      },
+    const user = await User.create({
+      email: data.email.toLowerCase(),
+      password: hashedPassword,
+      fullName: data.fullName,
+      phone: data.phone,
+      companyName: data.companyName,
     });
 
-    const token = this.generateToken(user.id, user.email);
-
     // Create default settings for user
-    await prisma.userSettings.create({
-      data: {
-        userId: user.id,
-        panelTypes: [
-          { id: 'mono-standard', name: 'Monocrystalline (Standard)', wattage: 540, dimensions: '2256×1134mm', areaSqFt: 22, active: true },
-          { id: 'mono-large', name: 'Monocrystalline (Large)', wattage: 585, dimensions: '2278×1134mm', areaSqFt: 24, active: true },
-          { id: 'topcon', name: 'TOPCon (N-Type)', wattage: 590, dimensions: '2172×1303mm', areaSqFt: 22, active: true },
-        ],
-      },
+    await Settings.create({
+      userId: user._id.toString(),
+      panelTypes: [
+        { id: 'mono-standard', name: 'Monocrystalline (Standard)', wattage: 540, dimensions: '2256×1134mm', areaSqFt: 22, active: true },
+        { id: 'mono-large', name: 'Monocrystalline (Large)', wattage: 585, dimensions: '2278×1134mm', areaSqFt: 24, active: true },
+        { id: 'topcon', name: 'TOPCon (N-Type)', wattage: 590, dimensions: '2172×1303mm', areaSqFt: 22, active: true },
+      ],
     });
 
     // Create default pricing for user
@@ -57,7 +43,7 @@ export class AuthService {
 
     const pricingData = capacities.flatMap((capacity) =>
       phases[capacity].map((phase) => ({
-        userId: user.id,
+        userId: user._id.toString(),
         capacity,
         phase,
         panelCost: 0,
@@ -70,15 +56,25 @@ export class AuthService {
       }))
     );
 
-    await prisma.pricing.createMany({ data: pricingData });
+    await Pricing.insertMany(pricingData);
 
-    return { user, token };
+    const token = this.generateToken(user._id.toString(), user.email);
+
+    return {
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        fullName: user.fullName,
+        phone: user.phone,
+        companyName: user.companyName,
+        createdAt: user.createdAt,
+      },
+      token,
+    };
   }
 
   async login(data: LoginInput) {
-    const user = await prisma.user.findUnique({
-      where: { email: data.email },
-    });
+    const user = await User.findOne({ email: data.email.toLowerCase() });
 
     if (!user) {
       throw new Error('Invalid email or password');
@@ -90,11 +86,11 @@ export class AuthService {
       throw new Error('Invalid email or password');
     }
 
-    const token = this.generateToken(user.id, user.email);
+    const token = this.generateToken(user._id.toString(), user.email);
 
     return {
       user: {
-        id: user.id,
+        id: user._id.toString(),
         email: user.email,
         fullName: user.fullName,
         phone: user.phone,

@@ -9,7 +9,7 @@ import {
 } from '../types/index.js';
 import { asyncHandler } from '../middleware/error-handler.js';
 import type { ApiResponse, PaginatedResponse } from '../types/index.js';
-import type { Quotation } from '@prisma/client';
+import type { IQuotation } from '../models/quotation.model.js';
 
 const router = Router();
 
@@ -41,7 +41,7 @@ router.post('/',
     res.status(201).json({
       success: true,
       data: quotation,
-    } as ApiResponse<Quotation>);
+    } as ApiResponse<IQuotation>);
   })
 );
 
@@ -89,7 +89,7 @@ router.patch('/:id/approve',
     res.json({
       success: true,
       data: quotation,
-    } as ApiResponse<Quotation>);
+    } as ApiResponse<IQuotation>);
   })
 );
 

@@ -2,13 +2,13 @@
 
 ## Overview
 
-Solar Dashboard is a Next.js 14+ application with shadcn/ui components for managing solar quotations, pricing, and ROI calculations.
+Solar Dashboard is a full-stack application with Next.js 14 frontend and Express.js backend, using MongoDB for data persistence. The system manages solar quotations, pricing, and ROI calculations with API-driven calculations.
 
 ## Technology Stack
 
 | Layer | Technology |
 |-------|------------|
-| Framework | Next.js 14 (App Router) |
+| Frontend | Next.js 14 (App Router) |
 | UI Components | shadcn/ui + Radix UI |
 | Styling | Tailwind CSS |
 | Forms | React Hook Form + Zod |
@@ -16,6 +16,39 @@ Solar Dashboard is a Next.js 14+ application with shadcn/ui components for manag
 | Icons | Lucide React |
 | Charts | Recharts |
 | PDF | @react-pdf/renderer |
+| Backend | Express.js + TypeScript |
+| Database | MongoDB |
+| ODM | Mongoose |
+
+## Backend Architecture
+
+```
+backend/
+├── src/
+│   ├── routes/                  # Express route handlers
+│   │   ├── formula-routes.ts   # Solar calculation APIs
+│   │   └── user-routes.ts      # User management APIs
+│   ├── models/                  # Mongoose schemas
+│   │   ├── user.ts
+│   │   ├── quotation.ts
+│   │   ├── pricing.ts
+│   │   └── settings.ts
+│   ├── lib/
+│   │   ├── db.ts              # MongoDB connection
+│   │   └── solar-calculations.ts # Formula constants
+│   └── index.ts               # Express app entry
+└── package.json
+```
+
+## API Endpoints (Formula Calculations)
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/formula/solar-sizing` | POST | Calculate system size from load |
+| `/api/formula/cost` | POST | Calculate system cost |
+| `/api/formula/roi` | POST | Calculate ROI metrics |
+| `/api/formula/emi` | POST | Calculate loan EMI |
+| `/api/formula/suggest-capacity` | POST | Suggest capacity based on budget |
 
 ## Frontend Architecture
 
@@ -43,7 +76,7 @@ frontnend/src/
 │   ├── shared/                  # Cross-feature shared
 │   └── ui/                      # shadcn/ui primitives
 └── lib/
-    ├── calculations.ts         # Solar math
+    ├── api.ts                  # API client functions
     └── utils.ts                # Utilities
 ```
 
@@ -93,6 +126,24 @@ App Shell
 
 ## Data Flow
 
+### Frontend → API → MongoDB Flow
+
+```
+┌─────────────┐     POST      ┌─────────────┐     CRUD      ┌─────────────┐
+│   Frontend  │ ──────────►  │   Backend   │ ──────────►  │   MongoDB   │
+│  (Next.js)  │   JSON       │  (Express)  │   Mongoose  │  (Database) │
+│             │ ◄──────────  │             │ ◄─────────  │             │
+└─────────────┘  Response    └─────────────┘  Document   └─────────────┘
+```
+
+### Formula API Flow
+
+1. Frontend collects user inputs (load, budget, location)
+2. POST request to formula endpoint
+3. Backend validates and calculates using constants from `solar-calculations.ts`
+4. Returns `{ success: boolean, data: {...} }` response
+5. Frontend updates UI with calculated values
+
 ### Quotation Creation Flow
 
 1. User navigates to `/dashboard/quotation/new`
@@ -114,19 +165,37 @@ System kW → Monthly Generation → Monthly Savings → Annual Savings
                             CO2 Calculation (carbon offset)
 ```
 
-## Key Calculations
+## MongoDB Collections
 
-### Solar Generation
-```
-Monthly kWh = System kW × Peak Sun Hours (4.5) × Days (30) × PR (0.75)
+| Collection | Purpose |
+|------------|---------|
+| `users` | User accounts and profiles |
+| `quotations` | Solar system quotations |
+| `pricing` | Panel/module pricing data |
+| `settings` | User preferences and configurations |
+
+## API Response Format
+
+All API responses follow this structure:
+
+```typescript
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
 ```
 
-### ROI Metrics
-```
-Monthly Savings = Monthly Generation × Unit Rate
-Annual Savings = Monthly Savings × 12
-Actual Investment = System Cost - Subsidy (78,000)
-Payback Period = (Actual Investment / Annual Savings) × 12 months
+Example:
+```json
+{
+  "success": true,
+  "data": {
+    "systemSize": 10,
+    "monthlyGeneration": 1012.5,
+    "annualSavings": 608000
+  }
+}
 ```
 
 ## shadcn/ui Components Used

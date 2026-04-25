@@ -1,134 +1,200 @@
-// Solar calculation constants
-const PEAK_SUN_HOURS = 4.5;
-const PERFORMANCE_RATIO = 0.75;
-const DAYS_PER_MONTH = 30;
-const CO2_FACTOR_KG_PER_KWH = 0.71;
-const PANEL_LIFE_YEARS = 25;
-const DEFAULT_SUBSIDY = 78000;
+/**
+ * Solar calculations service - business logic layer
+ * Uses pure formula functions from solar-calculations.ts
+ */
 
-const PANEL_WATTAGE: Record<string, number> = {
-  'mono-standard': 540,
-  'mono-large': 585,
-  'topcon': 590,
-};
+import {
+  SOLAR_CONSTANTS,
+  calculateMonthlyGeneration,
+  calculateMonthlySavings,
+  calculateAnnualSavings,
+  calculatePaybackPeriod,
+  calculateCO2Saved,
+  calculateEMI,
+  calculateSuggestedCapacity,
+  calculateSolarSizing,
+  calculateTotalCost,
+} from '../lib/solar-calculations.js';
 
-const PANEL_AREA: Record<string, number> = {
-  'mono-standard': 22,
-  'mono-large': 24,
-  'topcon': 22,
-};
+export interface SolarSizingResult {
+  systemKw: number;
+  panelCount: number;
+  systemArea: number;
+  panelWattage: number;
+  panelAreaSqFt: number;
+  wattagePerKw: number;
+}
 
-export function calculateSolarMetrics(
+export interface CostCalculationResult {
+  systemKw: number;
+  baseCost: number;
+  otherExpenses: number;
+  profitMargin: number;
+  totalCost: number;
+  profitAmount: number;
+  costWithMargin: number;
+  gstAmount: number;
+  finalPrice: number;
+}
+
+export interface ROIResult {
+  monthlyGeneration: number;
+  monthlySavings: number;
+  annualSavings: number;
+  systemCost: number;
+  subsidyAmount: number;
+  actualInvestment: number;
+  paybackYears: number;
+  paybackMonths: number;
+  totalSavings: number;
+  co2SavedPerYear: number;
+  co2SavedOverLifetime: number;
+}
+
+export interface EMIResult {
+  loanAmount: number;
+  interestRate: number;
+  termInYears: number;
+  emi: number;
+  totalPayable: number;
+  totalInterest: number;
+}
+
+export interface SuggestCapacityResult {
+  monthlyUnits: number[];
+  avgMonthlyUnits: number;
+  suggestedCapacityKw: number;
+  monthlyGeneration: number;
+  annualSavings: number;
+  systemCost: number;
+  paybackYears: number;
+}
+
+/**
+ * Calculate solar system sizing (panels, area)
+ */
+export function calculateSystemSizing(
   systemKw: number,
-  _panelType: string,
-  unitRate: number
-) {
-  const monthlyGeneration = Math.round(systemKw * PEAK_SUN_HOURS * DAYS_PER_MONTH * PERFORMANCE_RATIO);
-  const monthlySavings = Math.round(monthlyGeneration * unitRate);
-  const annualSavings = monthlySavings * 12;
-  const subsidyAmount = DEFAULT_SUBSIDY;
-
-  // Default system cost calculation (rough estimate)
-  const systemCost = systemKw * 60000; // ~60k per kW
-  const actualInvestment = systemCost - subsidyAmount;
-  const paybackTotalMonths = annualSavings > 0 ? (actualInvestment / annualSavings) * 12 : 0;
-
-  const paybackYears = Math.floor(paybackTotalMonths / 12);
-  const paybackMonths = Math.round(paybackTotalMonths % 12);
-  const totalSavings = Math.max(0, Math.round(annualSavings * PANEL_LIFE_YEARS));
-
+  panelType: keyof typeof SOLAR_CONSTANTS.PANEL_WATTAGE
+): SolarSizingResult {
+  const sizing = calculateSolarSizing(systemKw, panelType);
   return {
-    monthlyGeneration,
-    monthlySavings,
-    annualSavings,
-    subsidyAmount,
-    actualInvestment: Math.round(actualInvestment),
-    paybackYears,
-    paybackMonths,
-    totalSavings,
-    loanAmount: 0,
-    loanEmi: 0,
-    loanPayable: 0,
-    amount: (systemCost).toString(),
+    ...sizing,
+    systemKw: sizing.systemKw,
+    panelCount: sizing.panelCount,
+    systemArea: sizing.systemArea,
+    panelWattage: sizing.panelWattage,
+    panelAreaSqFt: sizing.panelAreaSqFt,
+    wattagePerKw: sizing.wattagePerKw,
   };
 }
 
-export function calculateROI(
+/**
+ * Calculate total cost with profit margin and GST
+ */
+export function calculateSystemCost(
   systemKw: number,
+  baseCost: number,
+  otherExpenses: number = 0,
+  profitMargin: number = SOLAR_CONSTANTS.DEFAULT_PROFIT_MARGIN,
+  gstPercentage: number = 18
+): CostCalculationResult {
+  const costCalc = calculateTotalCost(baseCost, otherExpenses, profitMargin);
+  const gstAmount = Math.round(costCalc.costWithMargin * gstPercentage / 100);
+  const finalPrice = costCalc.costWithMargin + gstAmount;
+
+  return {
+    systemKw,
+    baseCost,
+    otherExpenses,
+    profitMargin,
+    totalCost: costCalc.totalCost,
+    profitAmount: costCalc.profitAmount,
+    costWithMargin: costCalc.costWithMargin,
+    gstAmount,
+    finalPrice,
+  };
+}
+
+/**
+ * Calculate full ROI including savings, payback, and CO2
+ */
+export function calculateSystemROI(
   systemCost: number,
-  unitRate: number,
-  subsidyAmount: number = DEFAULT_SUBSIDY
-) {
-  const monthlyGeneration = Math.round(systemKw * PEAK_SUN_HOURS * DAYS_PER_MONTH * PERFORMANCE_RATIO);
-  const monthlySavings = Math.round(monthlyGeneration * unitRate);
-  const annualSavings = monthlySavings * 12;
-  const actualInvestment = systemCost - subsidyAmount;
-  const paybackTotalMonths = annualSavings > 0 ? (actualInvestment / annualSavings) * 12 : 0;
+  subsidyAmount: number = SOLAR_CONSTANTS.DEFAULT_SUBSIDY,
+  monthlyGeneration?: number,
+  unitRate: number = SOLAR_CONSTANTS.DEFAULT_UNIT_RATE,
+  systemKw?: number
+): ROIResult {
+  // Calculate generation if not provided
+  const generation = monthlyGeneration ?? (systemKw
+    ? calculateMonthlyGeneration(systemKw)
+    : 0);
 
-  const paybackYears = Math.floor(paybackTotalMonths / 12);
-  const paybackMonths = Math.round(paybackTotalMonths % 12);
-  const totalSavings = Math.max(0, Math.round(annualSavings * PANEL_LIFE_YEARS));
-  const co2Saved = (systemKw * PEAK_SUN_HOURS * 365 * PERFORMANCE_RATIO * CO2_FACTOR_KG_PER_KWH / 1000).toFixed(2);
+  const monthlySavings = calculateMonthlySavings(generation, unitRate);
+  const annualSavings = calculateAnnualSavings(monthlySavings);
+  const payback = calculatePaybackPeriod(systemCost, subsidyAmount, annualSavings);
+  const co2PerYear = systemKw
+    ? calculateCO2Saved(systemKw)
+    : 0;
 
   return {
-    monthlyGeneration,
+    monthlyGeneration: generation,
     monthlySavings,
     annualSavings,
-    actualInvestment: Math.round(actualInvestment),
-    paybackYears,
-    paybackMonths,
-    totalSavings,
-    co2Saved,
+    systemCost,
+    subsidyAmount,
+    actualInvestment: systemCost - subsidyAmount,
+    paybackYears: payback.years,
+    paybackMonths: payback.months,
+    totalSavings: annualSavings * SOLAR_CONSTANTS.PANEL_LIFE_YEARS,
+    co2SavedPerYear: co2PerYear,
+    co2SavedOverLifetime: co2PerYear * SOLAR_CONSTANTS.PANEL_LIFE_YEARS,
   };
 }
 
-export function calculateEMI(principal: number, annualRate: number, years: number) {
-  const monthlyRate = annualRate / 100 / 12;
-  const months = years * 12;
-
-  let emi: number;
-  if (monthlyRate <= 0) {
-    emi = principal / months;
-  } else {
-    emi = (principal * monthlyRate * Math.pow(1 + monthlyRate, months)) /
-          (Math.pow(1 + monthlyRate, months) - 1);
-  }
-
-  const totalPayable = Math.round(emi * months);
-  const totalInterest = totalPayable - principal;
+/**
+ * Calculate EMI for solar loan
+ */
+export function calculateLoanEMI(
+  loanAmount: number,
+  interestRate: number,
+  termInYears: number
+): EMIResult {
+  const emiCalc = calculateEMI(loanAmount, interestRate, termInYears);
 
   return {
-    emi: Math.round(emi),
-    totalPayable,
-    totalInterest,
+    loanAmount,
+    interestRate,
+    termInYears,
+    emi: emiCalc.emi,
+    totalPayable: emiCalc.totalPayable,
+    totalInterest: emiCalc.totalInterest,
   };
 }
 
-export function calculatePanelRequirements(
-  systemKw: number,
-  panelType: string,
-  areaLength?: number,
-  areaWidth?: number
-) {
-  const wattage = PANEL_WATTAGE[panelType] || 540;
-  const areaSqFt = PANEL_AREA[panelType] || 22;
-  const numPanels = Math.ceil((systemKw * 1000) / wattage);
-  const systemArea = numPanels * areaSqFt;
-
-  let availableArea = 0;
-  let shortfall = 0;
-
-  if (areaLength && areaWidth) {
-    availableArea = Math.round(areaLength * areaWidth * 10.764);
-    shortfall = Math.max(0, systemArea - availableArea);
-  }
+/**
+ * Suggest capacity from bill data with full calculation
+ */
+export function suggestSystemCapacity(
+  monthlyUnits: number[],
+  unitRate: number = SOLAR_CONSTANTS.DEFAULT_UNIT_RATE
+): SuggestCapacityResult {
+  const { avgMonthlyUnits, suggestedCapacityKw } = calculateSuggestedCapacity(monthlyUnits);
+  const monthlyGeneration = calculateMonthlyGeneration(suggestedCapacityKw);
+  const annualSavings = calculateAnnualSavings(
+    calculateMonthlySavings(monthlyGeneration, unitRate)
+  );
+  const systemCost = suggestedCapacityKw * 60000; // Estimate ~60k per kW
+  const payback = calculatePaybackPeriod(systemCost, SOLAR_CONSTANTS.DEFAULT_SUBSIDY, annualSavings);
 
   return {
-    numPanels,
-    panelWattage: wattage,
-    systemArea,
-    availableArea,
-    shortfall,
-    isFeasible: shortfall === 0,
+    monthlyUnits,
+    avgMonthlyUnits,
+    suggestedCapacityKw,
+    monthlyGeneration,
+    annualSavings,
+    systemCost,
+    paybackYears: payback.years,
   };
 }
