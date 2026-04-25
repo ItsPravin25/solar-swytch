@@ -48,8 +48,24 @@ frontnend/src/
 │       ├── table.tsx
 │       └── ...
 └── lib/
-    ├── calculations.ts           # Solar/ROI calculations
-    └── utils.ts                  # Utility functions
+    ├── api.ts                  # API client functions
+    └── utils.ts                # Utility functions
+```
+
+```
+backend/src/
+├── routes/
+│   ├── formula-routes.ts      # Solar calculation endpoints
+│   └── user-routes.ts         # User management endpoints
+├── models/
+│   ├── user.ts                 # User schema
+│   ├── quotation.ts           # Quotation schema
+│   ├── pricing.ts             # Pricing schema
+│   └── settings.ts            # Settings schema
+├── lib/
+│   ├── db.ts                  # MongoDB connection
+│   └── solar-calculations.ts  # Formula constants
+└── index.ts                   # Express app entry
 ```
 
 ## Naming Conventions
@@ -61,6 +77,34 @@ frontnend/src/
 | Functions | camelCase | `calculateMonthlyGeneration` |
 | Constants | UPPER_SNAKE_CASE | `PEAK_SUN_HOURS`, `DEFAULT_SUBSIDY` |
 | Types/Interfaces | PascalCase | `PanelType`, `QuotationForm` |
+
+## API Response Format
+
+All backend API responses follow this structure:
+
+```typescript
+interface ApiResponse<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+}
+```
+
+Example success response:
+```typescript
+res.json({
+  success: true,
+  data: { systemSize: 10, monthlyGeneration: 1012.5 }
+});
+```
+
+Example error response:
+```typescript
+res.status(400).json({
+  success: false,
+  error: 'Invalid input parameters'
+});
+```
 
 ## shadcn/ui Patterns
 
@@ -110,9 +154,46 @@ import {
 - `(dashboard)` - Dashboard shell with sidebar/header
 - `dashboard/` - Protected routes requiring auth layout
 
+## Frontend API Client
+
+Use `lib/api.ts` for all backend communication:
+
+```typescript
+import { apiRequest } from "@/lib/api";
+
+// Example: Fetch solar sizing calculation
+const result = await apiRequest('/api/formula/solar-sizing', {
+  method: 'POST',
+  body: { loadKw: 10, location: 'delhi' }
+});
+```
+
+## Backend Formula Constants
+
+Formula constants are centralized in `backend/src/lib/solar-calculations.ts`:
+
+```typescript
+export const SOLAR_CONSTANTS = {
+  PEAK_SUN_HOURS: 4.5,
+  PERFORMANCE_RATIO: 0.75,
+  DAYS_PER_MONTH: 30,
+  CO2_FACTOR_KG_PER_KWH: 0.71,
+  PANEL_LIFE_YEARS: 25,
+  DEFAULT_SUBSIDY: 78000,
+  COST_PER_KW: 60000,  // INR per kW
+  LOAN_TENURE_MONTHS: 120,
+  LOAN_INTEREST_RATE: 0.075  // 7.5%
+};
+```
+
+**IMPORTANT**: Frontend calculations in `lib/calculations.ts` must sync with backend constants. When updating formula constants:
+1. Update `backend/src/lib/solar-calculations.ts`
+2. Update corresponding values in `frontnend/src/lib/calculations.ts`
+3. Ensure both use identical values
+
 ## Calculations Library
 
-Solar/ROI calculations in `lib/calculations.ts`:
+Solar/ROI calculations in `frontnend/src/lib/calculations.ts`:
 
 | Function | Purpose |
 |----------|---------|
@@ -126,15 +207,56 @@ Solar/ROI calculations in `lib/calculations.ts`:
 | `calculateEMI` | Loan EMI calculation |
 | `formatINR` | Currency formatting |
 
-## Constants
+## Mongoose Models
 
+### User Schema
 ```typescript
-const PEAK_SUN_HOURS = 4.5;
-const PERFORMANCE_RATIO = 0.75;
-const DAYS_PER_MONTH = 30;
-const CO2_FACTOR_KG_PER_KWH = 0.71;
-const PANEL_LIFE_YEARS = 25;
-const DEFAULT_SUBSIDY = 78000;
+{
+  name: String,
+  email: String (unique),
+  phone: String,
+  company: String,
+  onboardingComplete: Boolean,
+  settings: { type: Schema.Types.ObjectId, ref: 'settings' }
+}
+```
+
+### Quotation Schema
+```typescript
+{
+  user: { type: Schema.Types.ObjectId, ref: 'user' },
+  customerName: String,
+  systemSize: Number,
+  cost: Number,
+  subsidy: Number,
+  loanAmount: Number,
+  monthlyGeneration: Number,
+  monthlySavings: Number,
+  paybackMonths: Number,
+  roi: Number,
+  status: String (enum: 'draft', 'sent', 'accepted', 'rejected')
+}
+```
+
+### Pricing Schema
+```typescript
+{
+  panelType: String,
+  capacityW: Number,
+  costPerKw: Number,
+  efficiency: Number
+}
+```
+
+### Settings Schema
+```typescript
+{
+  user: { type: Schema.Types.ObjectId, ref: 'user' },
+  gstRate: Number,
+  unitRate: Number,
+  subsidyAmount: Number,
+  loanInterestRate: Number
+}
 ```
 
 ## Component Organization

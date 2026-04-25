@@ -1,22 +1,15 @@
-import { prisma } from '../config/database.js';
+import { Pricing } from '../models/pricing.model.js';
 import type { PricingUpdateInput, PricingBulkUpdateInput } from '../types/index.js';
 
 export class PricingService {
   async findAll(userId: string) {
-    const items = await prisma.pricing.findMany({
-      where: { userId },
-      orderBy: [{ capacity: 'asc' }, { phase: 'asc' }],
-    });
-
-    return items;
+    return Pricing.find({ userId })
+      .sort({ capacity: 'asc', phase: 'asc' })
+      .lean();
   }
 
   async findById(id: string, userId: string) {
-    const pricing = await prisma.pricing.findFirst({
-      where: { id, userId },
-    });
-
-    return pricing;
+    return Pricing.findOne({ _id: id, userId }).lean();
   }
 
   async bulkUpdate(userId: string, data: PricingBulkUpdateInput) {
@@ -25,36 +18,21 @@ export class PricingService {
         const totalCost = item.panelCost + item.inverterCost + item.structureCost + item.cableCost + item.otherCost;
         const status = totalCost > 0 ? 'complete' : 'pending';
 
-        return prisma.pricing.upsert({
-          where: {
-            userId_capacity_phase: {
-              userId,
-              capacity: item.capacity,
-              phase: item.phase,
+        return Pricing.findOneAndUpdate(
+          { userId, capacity: item.capacity, phase: item.phase },
+          {
+            $set: {
+              panelCost: item.panelCost,
+              inverterCost: item.inverterCost,
+              structureCost: item.structureCost,
+              cableCost: item.cableCost,
+              otherCost: item.otherCost,
+              totalCost,
+              status,
             },
           },
-          update: {
-            panelCost: item.panelCost,
-            inverterCost: item.inverterCost,
-            structureCost: item.structureCost,
-            cableCost: item.cableCost,
-            otherCost: item.otherCost,
-            totalCost,
-            status,
-          },
-          create: {
-            userId,
-            capacity: item.capacity,
-            phase: item.phase,
-            panelCost: item.panelCost,
-            inverterCost: item.inverterCost,
-            structureCost: item.structureCost,
-            cableCost: item.cableCost,
-            otherCost: item.otherCost,
-            totalCost,
-            status,
-          },
-        });
+          { upsert: true, new: true }
+        );
       })
     );
 
@@ -70,16 +48,13 @@ export class PricingService {
     const totalCost = data.panelCost + data.inverterCost + data.structureCost + data.cableCost + data.otherCost;
     const status = totalCost > 0 ? 'complete' : 'pending';
 
-    const pricing = await prisma.pricing.update({
-      where: { id },
-      data: {
+    return Pricing.findByIdAndUpdate(id, {
+      $set: {
         ...data,
         totalCost,
         status,
       },
-    });
-
-    return pricing;
+    }, { new: true });
   }
 }
 

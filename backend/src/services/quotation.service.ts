@@ -1,4 +1,4 @@
-import { prisma } from '../config/database.js';
+import { Quotation } from '../models/quotation.model.js';
 import { calculateSolarMetrics } from './calculations.service.js';
 import type { QuotationCreateInput, QuotationFilters } from '../types/index.js';
 
@@ -16,31 +16,31 @@ const PANEL_AREA: Record<string, number> = {
 
 export class QuotationService {
   async findAll(userId: string, filters: QuotationFilters) {
-    const { page, limit, search, approved, sortBy, sortOrder } = filters;
+    const page = filters.page || 1;
+    const limit = filters.limit || 10;
     const skip = (page - 1) * limit;
 
-    const where: Record<string, unknown> = { userId };
+    const query: Record<string, unknown> = { userId };
 
-    if (search) {
-      where.OR = [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName: { contains: search, mode: 'insensitive' } },
-        { phone: { contains: search, mode: 'insensitive' } },
-      ];
+    if (filters.search) {
+      const searchRegex = new RegExp(filters.search, 'i');
+      query['customer.firstName'] = searchRegex;
     }
 
-    if (approved !== undefined) {
-      where.approved = approved;
+    if (filters.approved !== undefined) {
+      query.approved = filters.approved;
     }
+
+    const sortField = filters.sortBy || 'createdAt';
+    const sortOrder = filters.sortOrder === 'asc' ? 1 : -1;
 
     const [items, total] = await Promise.all([
-      prisma.quotation.findMany({
-        where,
-        orderBy: { [sortBy]: sortOrder },
-        skip,
-        take: limit,
-      }),
-      prisma.quotation.count({ where }),
+      Quotation.find(query)
+        .sort({ [sortField]: sortOrder })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      Quotation.countDocuments(query),
     ]);
 
     return {
@@ -53,67 +53,39 @@ export class QuotationService {
   }
 
   async findById(id: string, userId: string) {
-    const quotation = await prisma.quotation.findFirst({
-      where: { id, userId },
-    });
-
-    return quotation;
+    return Quotation.findOne({ _id: id, userId }).lean();
   }
 
   async create(userId: string, data: QuotationCreateInput) {
     const systemKw = parseFloat(data.systemCapacity);
     const unitRate = data.unitRate || 6.0;
 
-    // Calculate financial metrics
     const metrics = calculateSolarMetrics(systemKw, data.panelType, unitRate);
     const numPanels = Math.ceil((systemKw * 1000) / PANEL_WATTAGE[data.panelType]);
     const systemArea = numPanels * PANEL_AREA[data.panelType];
     const availableArea = Math.round(systemArea * 0.5);
     const shortfall = Math.max(0, systemArea - availableArea);
 
-    const quotation = await prisma.quotation.create({
-      data: {
-        userId,
-        ...data,
-        numPanels,
-        availableArea: availableArea.toString(),
-        systemArea: systemArea.toString(),
-        shortfall: shortfall.toString(),
-        ...metrics,
-        unitRate,
+    return Quotation.create({
+      userId,
+      customer: {
+        firstName: data.firstName,
+        lastName: data.lastName,
+        phone: data.phone,
+        address: data.address,
+        state: data.state,
+        city: data.city,
       },
-    });
-
-    return quotation;
-  }
-
-  async update(id: string, userId: string, data: Partial<QuotationCreateInput>) {
-    const existing = await this.findById(id, userId);
-    if (!existing) {
-      throw new Error('Quotation not found');
-    }
-
-    type UpdateData = Record<string, unknown>;
-    let updateData: UpdateData = { ...data };
-
-    // Recalculate if technical fields change
-    if (data.systemCapacity || data.panelType) {
-      const systemKw = parseFloat(data.systemCapacity || existing.systemCapacity);
-      const panelType = data.panelType || existing.panelType;
-      const unitRate = data.unitRate || existing.unitRate || 6.0;
-
-      const metrics = calculateSolarMetrics(systemKw, panelType, unitRate);
-      const numPanels = Math.ceil((systemKw * 1000) / PANEL_WATTAGE[panelType]);
-      const systemArea = numPanels * PANEL_AREA[panelType];
-      const availableArea = Math.round(systemArea * 0.5);
-      const shortfall = Math.max(0, systemArea - availableArea);
-
-      updateData = {
-        ...updateData,
+      technical: {
+        systemCapacity: data.systemCapacity,
+        panelType: data.panelType,
+        phase: data.phase,
         numPanels,
         availableArea: availableArea.toString(),
         systemArea: systemArea.toString(),
         shortfall: shortfall.toString(),
+      },
+      financial: {
         monthlyGeneration: metrics.monthlyGeneration,
         monthlySavings: metrics.monthlySavings,
         annualSavings: metrics.annualSavings,
@@ -122,43 +94,78 @@ export class QuotationService {
         paybackYears: metrics.paybackYears,
         paybackMonths: metrics.paybackMonths,
         totalSavings: metrics.totalSavings,
-        loanAmount: metrics.loanAmount,
-        loanEmi: metrics.loanEmi,
-        loanPayable: metrics.loanPayable,
-        amount: metrics.amount,
+        amount: metrics.amount.toString(),
         unitRate,
+      },
+      approved: false,
+    });
+  }
+
+  async update(id: string, userId: string, data: Partial<QuotationCreateInput>) {
+    const existing = await Quotation.findOne({ _id: id, userId });
+    if (!existing) {
+      throw new Error('Quotation not found');
+    }
+
+    let updateData: Record<string, unknown> = {};
+
+    if (data.systemCapacity || data.panelType) {
+      const systemKw = parseFloat(data.systemCapacity || existing.technical.systemCapacity);
+      const panelType = data.panelType || existing.technical.panelType;
+      const unitRate = data.unitRate || existing.financial.unitRate || 6.0;
+
+      const metrics = calculateSolarMetrics(systemKw, panelType, unitRate);
+      const numPanels = Math.ceil((systemKw * 1000) / PANEL_WATTAGE[panelType]);
+      const systemArea = numPanels * PANEL_AREA[panelType];
+      const availableArea = Math.round(systemArea * 0.5);
+      const shortfall = Math.max(0, systemArea - availableArea);
+
+      updateData = {
+        'technical.systemCapacity': data.systemCapacity || existing.technical.systemCapacity,
+        'technical.panelType': panelType,
+        'technical.numPanels': numPanels,
+        'technical.availableArea': availableArea.toString(),
+        'technical.systemArea': systemArea.toString(),
+        'technical.shortfall': shortfall.toString(),
+        'financial.monthlyGeneration': metrics.monthlyGeneration,
+        'financial.monthlySavings': metrics.monthlySavings,
+        'financial.annualSavings': metrics.annualSavings,
+        'financial.subsidyAmount': metrics.subsidyAmount,
+        'financial.actualInvestment': metrics.actualInvestment,
+        'financial.paybackYears': metrics.paybackYears,
+        'financial.paybackMonths': metrics.paybackMonths,
+        'financial.totalSavings': metrics.totalSavings,
+        'financial.amount': metrics.amount.toString(),
+        'financial.unitRate': unitRate,
       };
     }
 
-    const quotation = await prisma.quotation.update({
-      where: { id },
-      data: updateData,
-    });
+    if (data.firstName) updateData['customer.firstName'] = data.firstName;
+    if (data.lastName) updateData['customer.lastName'] = data.lastName;
+    if (data.phone) updateData['customer.phone'] = data.phone;
+    if (data.address) updateData['customer.address'] = data.address;
+    if (data.state) updateData['customer.state'] = data.state;
+    if (data.city) updateData['customer.city'] = data.city;
 
-    return quotation;
+    return Quotation.findByIdAndUpdate(id, { $set: updateData }, { new: true });
   }
 
   async delete(id: string, userId: string) {
-    const existing = await this.findById(id, userId);
+    const existing = await Quotation.findOne({ _id: id, userId });
     if (!existing) {
       throw new Error('Quotation not found');
     }
 
-    await prisma.quotation.delete({ where: { id } });
+    await Quotation.findByIdAndDelete(id);
   }
 
   async approve(id: string, userId: string) {
-    const existing = await this.findById(id, userId);
+    const existing = await Quotation.findOne({ _id: id, userId });
     if (!existing) {
       throw new Error('Quotation not found');
     }
 
-    const quotation = await prisma.quotation.update({
-      where: { id },
-      data: { approved: true },
-    });
-
-    return quotation;
+    return Quotation.findByIdAndUpdate(id, { approved: true }, { new: true });
   }
 }
 

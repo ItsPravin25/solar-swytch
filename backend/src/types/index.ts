@@ -22,17 +22,20 @@ export const quotationCreateSchema = z.object({
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   phone: z.string().min(1, 'Phone is required'),
+  email: z.string().email().optional(),
   address: z.string().min(1, 'Address is required'),
-  location: z.string().min(1, 'Location is required'),
-  consumerNo: z.string().min(1, 'Consumer number is required'),
-  sanctionLoad: z.string().min(1, 'Sanction load is required'),
-  siteType: z.string().min(1, 'Site type is required'),
-  billingType: z.string().min(1, 'Billing type is required'),
+  location: z.string().optional(),
+  state: z.string().min(1, 'State is required'),
+  city: z.string().min(1, 'City is required'),
+  consumerNo: z.string().optional(),
+  sanctionLoad: z.string().optional(),
+  siteType: z.string().optional(),
+  billingType: z.string().optional(),
   systemCapacity: z.string().min(1, 'System capacity is required'),
-  systemType: z.enum(['on-grid', 'off-grid', 'hybrid']),
+  systemType: z.enum(['on-grid', 'off-grid', 'hybrid']).optional(),
   panelType: z.enum(['mono-standard', 'mono-large', 'topcon']),
-  roofType: z.string().min(1, 'Roof type is required'),
-  phase: z.enum(['1-Phase', '3-Phase']),
+  roofType: z.string().optional(),
+  phase: z.enum(['1-Phase', '3-Phase', 'single', 'three']).optional(),
   areaLength: z.string().optional(),
   areaWidth: z.string().optional(),
   buildingHeight: z.string().optional(),
@@ -115,30 +118,45 @@ export type GstSettingsInput = z.infer<typeof gstSettingsSchema>;
 export type TechnicalSettingsInput = z.infer<typeof technicalSettingsSchema>;
 export type PanelTypeInput = z.infer<typeof panelTypeSchema>;
 
-// Calculations
+// Calculations - Phase 2 schemas
+export const solarSizingSchema = z.object({
+  systemKw: z.number().min(0.1, 'System capacity must be at least 0.1 kW'),
+  panelType: z.enum(['mono-standard', 'mono-large', 'topcon']),
+});
+
+export const costCalculationSchema = z.object({
+  systemKw: z.number().min(0.1, 'System capacity must be at least 0.1 kW'),
+  baseCost: z.number().min(0, 'Base cost cannot be negative'),
+  otherExpenses: z.number().min(0, 'Other expenses cannot be negative').default(0),
+  profitMargin: z.number().min(0).max(100, 'Profit margin must be 0-100%').default(20),
+});
+
 export const roiCalculationSchema = z.object({
-  systemKw: z.number().min(0.1),
-  systemCost: z.number().min(0),
-  unitRate: z.number().min(0).default(6.0),
-  subsidyAmount: z.number().min(0).optional(),
+  systemCost: z.number().min(1, 'System cost must be at least 1'),
+  subsidyAmount: z.number().min(0).default(0),
+  monthlyGeneration: z.number().min(0, 'Monthly generation cannot be negative'),
+  unitRate: z.number().min(0.1, 'Unit rate must be positive'),
 });
 
 export const emiCalculationSchema = z.object({
-  principal: z.number().min(1),
-  annualRate: z.number().min(0.1),
-  years: z.number().min(1).max(30),
+  loanAmount: z.number().min(1, 'Loan amount must be at least 1'),
+  interestRate: z.number().min(0.1, 'Interest rate must be at least 0.1%'),
+  termInYears: z.number().min(1).max(30, 'Term must be 1-30 years'),
 });
 
-export const solarCalculationSchema = z.object({
-  systemKw: z.number().min(0.1),
-  panelType: z.enum(['mono-standard', 'mono-large', 'topcon']),
-  unitRate: z.number().min(0).default(6.0),
-  areaLength: z.number().optional(),
-  areaWidth: z.number().optional(),
+export const suggestCapacitySchema = z.object({
+  monthlyUnits: z.array(z.number().min(0, 'Units cannot be negative')).min(1, 'At least one month required'),
 });
 
+export type SolarSizingInput = z.infer<typeof solarSizingSchema>;
+export type CostCalculationInput = z.infer<typeof costCalculationSchema>;
 export type RoiCalculationInput = z.infer<typeof roiCalculationSchema>;
 export type EmiCalculationInput = z.infer<typeof emiCalculationSchema>;
+export type SuggestCapacityInput = z.infer<typeof suggestCapacitySchema>;
+
+// Legacy schema aliases for backwards compatibility
+export const solarCalculationSchema = solarSizingSchema;
+
 export type SolarCalculationInput = z.infer<typeof solarCalculationSchema>;
 
 // API Response types
