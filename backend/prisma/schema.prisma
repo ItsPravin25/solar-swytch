@@ -1,0 +1,2 @@
+// Prisma removed - using MongoDB/Mongoose instead
+// Models are now in src/models/ directory
