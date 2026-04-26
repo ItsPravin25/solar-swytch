@@ -75,6 +75,7 @@ export const pricingApi = {
   list: () => apiClient.get<any[]>('/pricing'),
   bulkUpdate: (items: any[]) => apiClient.put<any[]>('/pricing', { items }),
   update: (id: string, data: any) => apiClient.put<any>(`/pricing/${id}`, data),
+  delete: (id: string) => apiClient.delete<any>(`/pricing/${id}`),
 };
 
 // Settings API

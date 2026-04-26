@@ -1,5 +1,50 @@
-import type { IQuotation } from '../../../backend/src/models/quotation.model';
-import type { IPricing } from '../../../backend/src/models/pricing.model';
+// Backend types (inline - no cross-project imports)
+// These should match the backend IQuotation and IPricing interfaces
+
+interface BackendQuotation {
+  _id?: string;
+  customer?: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    consumerNo?: string;
+    sanctionLoad?: string;
+    siteType?: string;
+    billingType?: string;
+  };
+  technical?: {
+    systemCapacity?: string;
+    systemType?: string;
+    panelType?: string;
+    roofType?: string;
+    areaLength?: string;
+    areaWidth?: string;
+    buildingHeight?: string;
+    numPanels?: number;
+    availableArea?: string;
+    systemArea?: string;
+    shortfall?: string;
+  };
+  financial?: {
+    amount?: string;
+  };
+  createdAt?: Date;
+  approved?: boolean;
+}
+
+interface BackendPricing {
+  _id?: string;
+  capacity?: string;
+  phase?: string;
+  panelCost?: number;
+  inverterCost?: number;
+  structureCost?: number;
+  cableCost?: number;
+  otherCost?: number;
+}
 
 // ─── Quotation Mappers ─────────────────────────────────────────────────────────
 
@@ -47,7 +92,7 @@ interface PricingRow {
 /**
  * Map backend quotation to frontend QuotationDetail structure.
  */
-export function mapQuotationFromBackend(backend: IQuotation): QuotationDetail {
+export function mapQuotationFromBackend(backend: BackendQuotation): QuotationDetail {
   const customer = backend.customer || {};
   const technical = backend.technical || {};
   const financial = backend.financial || {};
@@ -129,7 +174,7 @@ export function mapQuotationToBackend(frontend: QuotationDetail): Record<string,
 /**
  * Map backend pricing item to frontend PricingRow structure.
  */
-export function mapPricingFromBackend(backend: IPricing): PricingRow {
+export function mapPricingFromBackend(backend: BackendPricing): PricingRow {
   return {
     id: (backend._id as unknown as string) || '',
     capacity: backend.capacity || '',
