@@ -6,6 +6,7 @@ import { UserProfile } from './SolarSwytch';
 import { BillUpload } from '../BillUpload';
 import { quotationsApi, pricingApi } from '../../lib/api';
 import { mapQuotationFromBackend, mapPricingFromBackend } from '../../lib/data-mapper';
+import { BoqDrawer } from '../boq/BoqDrawer';
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -1858,6 +1859,7 @@ export const SolarDashboard: React.FC<DashboardProps> = ({
   const [quotationStep, setQuotationStep] = useState<QuotationStep>(1);
   const [inputMode, setInputMode] = useState<'bill' | 'manual'>('bill');
   const [dashboardFilter, setDashboardFilter] = useState<DashboardFilter>('all');
+  const [selectedBoqKey, setSelectedBoqKey] = useState<string | null>(null);
 
   // Step 1
   const [custFirstName, setCustFirstName] = useState('');
@@ -3749,7 +3751,7 @@ export const SolarDashboard: React.FC<DashboardProps> = ({
           const isEditing = editingRow === row.id;
           const rowData = isEditing ? editBuffer as PricingRow : row;
           const total = (rowData.panelCost || 0) + (rowData.inverterCost || 0) + (rowData.structureCost || 0) + (rowData.cableCost || 0) + (rowData.otherCost || 0);
-          return <div key={row.id} className="grid items-center px-4 py-2.5 text-xs" style={{
+          return <div key={row.id} onClick={() => !isEditing && setSelectedBoqKey(`${row.capacity}_${row.phase === 'single' ? '1Ph' : '3Ph'}`)} className="grid items-center px-4 py-2.5 text-xs cursor-pointer" style={{
             gridTemplateColumns: '80px 80px 1fr 1fr 1fr 1fr 1fr 80px 60px',
             borderBottom: i < visibleRows.length - 1 ? '1px solid #F8FAFC' : 'none',
             backgroundColor: isEditing ? 'rgba(255,184,0,0.03)' : 'transparent'
@@ -3804,10 +3806,10 @@ export const SolarDashboard: React.FC<DashboardProps> = ({
                 color: '#0B1E3D'
               }}>{formatINR(total)}</span>
               <div className="flex items-center gap-1">
-                <button onClick={() => handlePricingEdit(row)} className="w-6 h-6 rounded flex items-center justify-center hover:bg-gray-100" style={{
+                <button onClick={(e) => { e.stopPropagation(); handlePricingEdit(row); }} className="w-6 h-6 rounded flex items-center justify-center hover:bg-gray-100" style={{
                   color: '#64748B'
                 }}><Edit3 size={11} /></button>
-                <button onClick={() => handlePricingDelete(row.id)} className="w-6 h-6 rounded flex items-center justify-center hover:bg-red-50" style={{
+                <button onClick={(e) => { e.stopPropagation(); handlePricingDelete(row.id); }} className="w-6 h-6 rounded flex items-center justify-center hover:bg-red-50" style={{
                   color: '#EF4444'
                 }}><Trash2 size={11} /></button>
               </div>
@@ -4168,5 +4170,14 @@ export const SolarDashboard: React.FC<DashboardProps> = ({
     <AnimatePresence>
       {downloadModalOpen && <DownloadPdfModal onClose={() => setDownloadModalOpen(false)} quotationData={quotationPdfData} />}
     </AnimatePresence>
+
+    {/* BOQ DRAWER */}
+    <BoqDrawer
+      open={selectedBoqKey !== null}
+      onClose={() => setSelectedBoqKey(null)}
+      boqKey={selectedBoqKey ?? ''}
+      capacity={selectedBoqKey ? selectedBoqKey.replace(/_(1Ph|3Ph)$/, '') : ''}
+      phase={selectedBoqKey?.endsWith('3Ph') ? '3-Phase' : '1-Phase'}
+    />
   </div>;
 };

@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Project Guidelines
+brand_guidelines.md
+system_guidelines.md
+
+# Locks
+yarn.lock
