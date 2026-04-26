@@ -3,15 +3,15 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { config } from 'dotenv';
-import { connectDatabase } from './config/mongodb.js';
-import { errorHandler } from './middleware/error-handler.js';
-import { apiLogger, getApiLogs } from './middleware/api-logger.js';
-import { authRouter } from './routes/auth.js';
-import { quotationRouter } from './routes/quotations.js';
-import { pricingRouter } from './routes/pricing.js';
-import { profileRouter } from './routes/profile.js';
-import { settingsRouter } from './routes/settings.js';
-import { calculationsRouter } from './routes/calculations.js';
+import { connectDatabase } from './config/mongodb.ts';
+import { errorHandler } from './middleware/error-handler.ts';
+import { apiLogger, getApiLogs } from './middleware/api-logger.ts';
+import { authRouter } from './routes/auth.ts';
+import { quotationRouter } from './routes/quotations.ts';
+import { pricingRouter } from './routes/pricing.ts';
+import { profileRouter } from './routes/profile.ts';
+import { settingsRouter } from './routes/settings.ts';
+import { calculationsRouter } from './routes/calculations.ts';
 
 config();
 

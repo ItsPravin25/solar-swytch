@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sun, Package, Upload, Plus, Trash2, Edit3, Save, X, Check, LogOut, Bell, Menu, CreditCard, ReceiptText, Percent, RefreshCw, Eye, CheckSquare, ClipboardList, LayoutDashboard, FilePlus, Settings, Download, ChevronDown, ArrowLeft, Image, Zap, AlertTriangle, FileText, Layers, AlertCircle, SquarePen, Printer, TrendingUp, Banknote, BarChart3, Calculator, ChevronRight, Star, Info, Leaf, MapPin, Filter, Loader2 } from 'lucide-react';
 import { UserProfilePanel } from './UserProfilePanel';
 import { UserProfile } from './SolarSwytch';
+import { BillUpload } from '../BillUpload';
 import { quotationsApi, pricingApi } from '../../lib/api';
 import { mapQuotationFromBackend, mapPricingFromBackend } from '../../lib/data-mapper';
 
@@ -208,35 +209,46 @@ const BILLING_MONTHS: MonthlyUnit[] = [{
   id: 'dec',
   label: 'Dec'
 }];
-const SITE_TYPE_OPTIONS = [{
-  value: '',
-  label: 'Select Site Type'
-}, {
-  value: 'residential',
-  label: 'Residential'
-}, {
-  value: 'commercial',
-  label: 'Commercial'
-}, {
-  value: 'industrial',
-  label: 'Industrial'
-}];
-const BILLING_TYPE_OPTIONS = [{
-  value: 'Res 1-Phase',
-  label: 'LT-I A – Res 1-Phase (Domestic)'
-}, {
-  value: 'Res 3-Phase',
-  label: 'LT-I B – Res 3-Phase (Domestic)'
-}, {
-  value: 'Com 1-Phase',
-  label: 'LT-I C – Com 1-Phase (Small Biz)'
-}, {
-  value: 'Com 3-Phase',
-  label: 'Com 3-Phase'
-}, {
-  value: 'Industrial',
-  label: 'Industrial'
-}];
+const SITE_TYPES = [
+  { value: 'residential', label: 'Residential', code: 'LT-I' },
+  { value: 'commercial', label: 'Commercial', code: 'LT-II' },
+  { value: 'industrial', label: 'Industrial', code: 'LT-III' },
+  { value: 'agriculture', label: 'Agriculture', code: 'LT-IV' },
+  { value: 'streetlight', label: 'Street Light', code: 'LT-V' },
+  { value: 'public', label: 'Public/Institutional', code: 'LT-VI' },
+  { value: 'temporary', label: 'Temporary', code: 'LT-Temp' },
+  { value: 'ev', label: 'EV Charging', code: 'LT-EV' },
+  { value: 'ht', label: 'High Tension', code: 'HT' },
+];
+const SITE_BILLING_MAP: Record<string, Array<{code: string, label: string, phase: string}>> = {
+  residential: [
+    { code: 'LT-I(A)', label: 'Residential – Single Phase', phase: '1-Phase' },
+    { code: 'LT-I(B)', label: 'Residential – Three Phase', phase: '3-Phase' },
+    { code: 'LT-I(C)', label: 'Residential (Common Services)', phase: '1/3-Phase' },
+  ],
+  commercial: [
+    { code: 'LT-II(A)', label: 'Commercial – Small', phase: '1/3-Phase' },
+    { code: 'LT-II(B)', label: 'Commercial – Large', phase: '3-Phase' },
+  ],
+  industrial: [
+    { code: 'LT-III(A)', label: 'Small Industry', phase: '3-Phase' },
+    { code: 'LT-III(B)', label: 'Medium Industry', phase: '3-Phase' },
+    { code: 'HT', label: 'Large Industry (HT)', phase: '11kV+' },
+  ],
+  agriculture: [
+    { code: 'LT-IV(A)', label: 'Agriculture Pump', phase: '1/3-Phase' },
+    { code: 'LT-IV(B)', label: 'Lift Irrigation', phase: '3-Phase' },
+  ],
+  streetlight: [{ code: 'LT-V', label: 'Street Light', phase: '1/3-Phase' }],
+  public: [{ code: 'LT-VI', label: 'Public Services', phase: '1/3-Phase' }],
+  temporary: [{ code: 'LT-Temp', label: 'Temporary Connection', phase: '1/3-Phase' }],
+  ev: [{ code: 'LT-EV', label: 'EV Charging Stations', phase: '1/3-Phase' }],
+  ht: [
+    { code: 'HT-I', label: 'Industry', phase: '11kV+' },
+    { code: 'HT-II', label: 'Commercial', phase: '11kV+' },
+    { code: 'HT-III', label: 'Railways/Metro', phase: '25kV' },
+  ],
+};
 const SYSTEM_TYPES: {
   value: SystemType;
   label: string;
@@ -1870,6 +1882,9 @@ export const SolarDashboard: React.FC<DashboardProps> = ({
   const [buildingHeight, setBuildingHeight] = useState('');
   const [roofType, setRoofType] = useState('');
   const [selectedPanel, setSelectedPanel] = useState<PanelTypeId>('mono-standard');
+  const [panelCount, setPanelCount] = useState<number>(0);
+  const [manualPanelOverride, setManualPanelOverride] = useState(false);
+  const totalArea = areaLength && areaWidth ? (parseFloat(areaLength) * parseFloat(areaWidth)).toString() : '';
 
   // Step 3 – Expenses
   const [expenseItems, setExpenseItems] = useState<ExpenseItem[]>(INITIAL_EXPENSE_ITEMS);
@@ -1918,8 +1933,8 @@ export const SolarDashboard: React.FC<DashboardProps> = ({
           quotationsApi.list(),
           pricingApi.list()
         ]);
-        setQuotations((quotationsRes.items || []).map(mapQuotationFromBackend));
-        setPricingRows((pricingRes as unknown as unknown[])?.map(mapPricingFromBackend) || []);
+        setQuotations(((quotationsRes.items || []) as any[]).map((q: any) => mapQuotationFromBackend(q) as any));
+        setPricingRows((pricingRes as unknown as any[])?.map((p: any) => mapPricingFromBackend(p) as any) || []);
       } catch (error) {
         console.error('Failed to fetch data:', error);
         setFetchError(error instanceof Error ? error.message : 'Failed to load data');
@@ -1931,16 +1946,28 @@ export const SolarDashboard: React.FC<DashboardProps> = ({
   }, []);
 
   // ── Derived values ──
-  const totalArea = areaLength && areaWidth ? (Number(areaLength) * Number(areaWidth)).toString() : '';
+  const panelInfo = PANEL_ROWS.find(p => p.id === selectedPanel) || PANEL_ROWS[0];
+
+  // ── Auto-calculate panel count from sanction load ──
+  useEffect(() => {
+    if (custSanctionLoad && !manualPanelOverride) {
+      const kw = parseFloat(custSanctionLoad);
+      const wattage = panelInfo.wattage;
+      const calculated = kw > 0 ? Math.ceil((kw * 1000) / wattage) : 0;
+      setPanelCount(calculated);
+    }
+  }, [custSanctionLoad, selectedPanel, manualPanelOverride, panelInfo.wattage]);
   const availableArea = totalArea ? (Number(totalArea) * 0.5).toFixed(0) : '';
   const activeExpenseItems = expenseItems.filter(item => item.isDefault);
   const totalOtherExpenses = activeExpenseItems.reduce((s, i) => s + (parseFloat(expenseValues[i.key]) || 0), 0);
   const avgMonthlyUnits = Object.values(monthlyUnits).reduce((s, v) => s + (parseFloat(v) || 0), 0) / 12;
   const suggestedCapacity = avgMonthlyUnits > 0 ? (avgMonthlyUnits / (30 * 4.5)).toFixed(1) : '—';
+  const sanctionLoadKw = avgMonthlyUnits > 0 ? Math.max(Math.ceil(avgMonthlyUnits / 135), 1) : 0;
   const initials = userProfile.fullName ? userProfile.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() : 'SO';
-  const panelInfo = PANEL_ROWS.find(p => p.id === selectedPanel) || PANEL_ROWS[0];
   const systemKw = parseFloat(systemCapacity) || 0;
-  const numPanels = systemKw > 0 ? Math.ceil(systemKw * 1000 / panelInfo.wattage) : 0;
+  const numPanels = manualPanelOverride
+    ? panelCount
+    : (custSanctionLoad ? Math.ceil(parseFloat(custSanctionLoad) * 1000 / panelInfo.wattage) : 0);
   const systemArea = numPanels > 0 ? Math.ceil(numPanels * panelInfo.areaSqFt) : 0;
   const availableAreaNum = parseFloat(availableArea) || 0;
   const shortfall = systemArea > availableAreaNum ? (systemArea - availableAreaNum).toFixed(0) : '0';
@@ -2089,8 +2116,8 @@ export const SolarDashboard: React.FC<DashboardProps> = ({
         areaWidth,
         buildingHeight,
       });
-      const mapped = mapQuotationFromBackend(created as unknown as import('../../../backend/src/models/quotation.model').IQuotation);
-      setQuotations(qs => [mapped, ...qs]);
+      const mapped = mapQuotationFromBackend(created as any);
+      setQuotations(qs => [mapped as any, ...qs]);
     } catch (error) {
       // Fallback: add optimistic record if API fails
       setQuotations(qs => [newQ, ...qs]);
@@ -2255,292 +2282,143 @@ export const SolarDashboard: React.FC<DashboardProps> = ({
       }}>{mode === 'bill' ? '📄 Upload Bill' : '✏️ Manual Input'}</button>)}
     </div>
 
-    {inputMode === 'bill' && <div className="mb-4 px-3 py-2.5 rounded-xl flex items-start gap-2.5" style={{
-      background: 'rgba(30,77,183,0.05)',
-      border: '1px solid rgba(30,77,183,0.15)'
-    }}>
-        <Info size={14} style={{
-        color: '#1E4DB7',
-        flexShrink: 0,
-        marginTop: 1
-      }} />
-        <p className="text-xs leading-relaxed" style={{
-        color: '#1E4DB7'
-      }}>
-          <strong>Upload Bill Mode:</strong>
-          <span> Fields (Name, Consumer No, Address, Site/Billing Type, Load, Units) will be auto-filled from the parsed document. Only Phone Number requires manual entry.</span>
+    {inputMode === 'bill' && <>
+      <BillUpload
+        onBillScraped={(data) => {
+          if (data.customerName) {
+            const parts = data.customerName.trim().split(/\s+/);
+            setCustFirstName(parts[0] ?? '');
+            setCustLastName(parts.slice(1).join(' ') ?? '');
+          }
+          if (data.address) setCustAddress(data.address);
+          if (data.consumerNo) setCustConsumerNo(data.consumerNo);
+          if (data.siteType) setSiteType(data.siteType);
+          if (data.billingType) setBillingType(data.billingType);
+          if (data.sanctionedLoad) {
+            setCustSanctionLoad(data.sanctionedLoad);
+            const kwMatch = data.sanctionedLoad.match(/(\d+\.?\d*)/);
+            if (kwMatch && !systemCapacity) setSystemCapacity(kwMatch[1]);
+          }
+          setUploadedBill('scraped');
+        }}
+        onError={(err) => { alert(err); }}
+      />
+      <p className="text-xs mb-4" style={{ color: '#64748B' }}>After uploading, check and edit fields below if needed.</p>
+    </>}
+
+    {/* ── Customer Information ───────────────────────────────────── */}
+    <div className="mb-4">
+      <p className="text-xs font-bold mb-2.5" style={{ color: '#64748B', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '10px' }}>Customer Information</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div><FieldLabel>First Name</FieldLabel><Input value={custFirstName} onChange={e => setCustFirstName(e.target.value)} placeholder="Rajesh" /></div>
+        <div><FieldLabel>Last Name</FieldLabel><Input value={custLastName} onChange={e => setCustLastName(e.target.value)} placeholder="Patil" /></div>
+        <div><FieldLabel>Phone Number <span className="font-normal text-xs" style={{ color: '#94A3B8' }}>(manual)</span></FieldLabel><Input type="tel" value={custPhone} onChange={e => setCustPhone(e.target.value)} placeholder="+91 98765 43210" /></div>
+        <div><FieldLabel>Consumer No.</FieldLabel><Input value={custConsumerNo} onChange={e => setCustConsumerNo(e.target.value)} placeholder="MH042300123456" /></div>
+      </div>
+    </div>
+
+    {/* ── Site Address ─────────────────────────────────────────── */}
+    <div className="mb-4">
+      <p className="text-xs font-bold mb-2.5" style={{ color: '#64748B', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '10px' }}>Site Address</p>
+      <div className="grid grid-cols-1 gap-3">
+        <div><FieldLabel>Address</FieldLabel><textarea value={custAddress} onChange={e => setCustAddress(e.target.value)} rows={2} placeholder="Plot 12, Shivaji Nagar, Pune" className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none" style={{ backgroundColor: 'white', border: '1.5px solid #E2E8F0', color: '#0B1E3D' }} /></div>
+        <div><FieldLabel>Location (City, State)</FieldLabel><Input value={custLocation} onChange={e => setCustLocation(e.target.value)} placeholder="Pune, Maharashtra" /></div>
+      </div>
+    </div>
+
+    {/* ── Connection Details ───────────────────────────────────── */}
+    <div className="mb-4">
+      <p className="text-xs font-bold mb-2.5" style={{ color: '#64748B', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '10px' }}>Connection Details</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div>
+          <FieldLabel>Site Type</FieldLabel>
+          <select value={siteType} onChange={e => { setSiteType(e.target.value); setBillingType(''); }} className="w-full px-3 py-2 rounded-lg text-sm outline-none appearance-none" style={{ backgroundColor: 'white', border: '1.5px solid #E2E8F0', color: siteType ? '#0B1E3D' : '#94A3B8', cursor: 'pointer' }}>
+            <option value="">Select Site Type</option>
+            {SITE_TYPES.map(s => <option key={s.value} value={s.value}>{s.label} ({s.code})</option>)}
+          </select>
+        </div>
+        <div>
+          <FieldLabel>Billing Type</FieldLabel>
+          <select value={billingType} onChange={e => {
+            const newBillingType = e.target.value;
+            setBillingType(newBillingType);
+            setCustSanctionLoad('');
+            const selectedBilling = (SITE_BILLING_MAP[siteType] || []).find(b => b.code === newBillingType);
+            if (selectedBilling && !systemCapacity) {
+              const PHASE_DEFAULTS: Record<string, number> = { '1-Phase': 3, '3-Phase': 5, '1/3-Phase': 3, '11kV+': 50 };
+              setSystemCapacity((PHASE_DEFAULTS[selectedBilling.phase] || 3).toString());
+            }
+          }} className="w-full px-3 py-2 rounded-lg text-sm outline-none appearance-none" style={{ backgroundColor: 'white', border: '1.5px solid #E2E8F0', color: billingType ? '#0B1E3D' : '#94A3B8', cursor: 'pointer' }}>
+            <option value="">{siteType ? 'Select Billing Type' : 'Select Site Type first'}</option>
+            {(SITE_BILLING_MAP[siteType] || []).map(b => <option key={b.code} value={b.code}>{b.label} ({b.phase})</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* PM Surya Ghar Notice */}
+      {isPMSuryaEligible && <div className="mt-3 px-3 py-2.5 rounded-xl flex items-start gap-2.5" style={{ background: 'rgba(255,184,0,0.06)', border: '1.5px solid rgba(255,184,0,0.3)' }}>
+          <Sun size={14} style={{ color: '#B45309', flexShrink: 0, marginTop: 1 }} />
+          <p className="text-xs leading-relaxed" style={{ color: '#92400E' }}>
+            <strong>Important:</strong> Only these categories are eligible for PM Surya Ghar Yojna: <strong>LT-I A</strong> (Residential 1-Phase Domestic), <strong>LT-I B</strong> (Residential 3-Phase Domestic), <strong>LT-I C</strong> (Commercial 1-Phase Small Business).
+          </p>
+        </div>}
+
+      {/* Sanction Load */}
+      <div className="mt-3">
+        <FieldLabel>Sanction Load</FieldLabel>
+        <div className="relative">
+          <Zap size={13} className="pointer-events-none" style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8', zIndex: 1 }} />
+          <select value={custSanctionLoad} onChange={e => setCustSanctionLoad(e.target.value)} className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none appearance-none" style={{ backgroundColor: 'white', border: '1.5px solid #E2E8F0', color: custSanctionLoad ? '#0B1E3D' : '#94A3B8', cursor: 'pointer' }}>
+            <option value="">Select Sanction Load</option>
+            {filteredSanctionLoadOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label} {opt.phases.length === 1 ? `(${opt.phases[0]} only)` : ''}</option>)}
+          </select>
+          <ChevronDown size={13} className="pointer-events-none" style={{ position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)', color: '#94A3B8' }} />
+        </div>
+        {avgMonthlyUnits > 0 && !custSanctionLoad && (
+          <p className="text-xs mt-1.5" style={{ color: '#64748B' }}>
+            Based on avg {avgMonthlyUnits.toFixed(0)} units/month → <strong>{sanctionLoadKw} kW</strong>
+          </p>
+        )}
+        {billingPhase !== 'both' && <p className="text-xs mt-1" style={{ color: '#7C5CFC' }}><span>Filtered for </span><strong>{billingPhase}</strong><span> billing — incompatible loads hidden</span></p>}
+      </div>
+    </div>
+
+    {/* ── Monthly Units ─────────────────────────────────────────── */}
+    <div className="mb-4">
+      <p className="text-xs font-bold mb-2.5" style={{ color: '#64748B', letterSpacing: '0.05em', textTransform: 'uppercase', fontSize: '10px' }}>Monthly Units (Jan – Dec)</p>
+      <div className="rounded-lg overflow-hidden" style={{ border: '1.5px solid #E2E8F0' }}>
+        <div className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+          {['Month', 'Units', 'Month', 'Units'].map((h, hi) => <div key={`${h}-${hi}`} className="px-2 py-2 text-xs font-bold text-center" style={{ backgroundColor: '#F8FAFC', borderBottom: '1px solid #E2E8F0', borderLeft: hi > 0 ? '1px solid #E2E8F0' : 'none', color: '#0B1E3D' }}>{h}</div>)}
+        </div>
+        {[0, 1, 2, 3, 4, 5].map(row => {
+          const m1 = BILLING_MONTHS[row];
+          const m2 = BILLING_MONTHS[row + 6];
+          return <div key={m1.id} className="grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', borderBottom: row < 5 ? '1px solid #F1F5F9' : 'none' }}>
+            <div className="px-2 py-1.5 flex items-center"><span className="text-xs font-medium" style={{ color: '#374151' }}>{m1.label}</span></div>
+            <div className="px-2 py-1" style={{ borderLeft: '1px solid #F1F5F9' }}>
+              <input type="number" value={monthlyUnits[m1.id] || ''} onChange={e => setMonthlyUnits(prev => ({ ...prev, [m1.id]: e.target.value }))} className="w-full px-2 py-1 rounded text-xs outline-none text-center" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#0B1E3D' }} aria-label={`Units for ${m1.label}`} />
+            </div>
+            <div className="px-2 py-1.5 flex items-center" style={{ borderLeft: '1px solid #F1F5F9' }}><span className="text-xs font-medium" style={{ color: '#374151' }}>{m2.label}</span></div>
+            <div className="px-2 py-1" style={{ borderLeft: '1px solid #F1F5F9' }}>
+              <input type="number" value={monthlyUnits[m2.id] || ''} onChange={e => setMonthlyUnits(prev => ({ ...prev, [m2.id]: e.target.value }))} className="w-full px-2 py-1 rounded text-xs outline-none text-center" style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#0B1E3D' }} aria-label={`Units for ${m2.label}`} />
+            </div>
+          </div>;
+        })}
+      </div>
+      {avgMonthlyUnits > 0 && <div className="flex items-center gap-3 mt-2 px-3 py-2 rounded-lg" style={{ backgroundColor: 'rgba(30,77,183,0.06)', border: '1px solid rgba(30,77,183,0.15)' }}>
+        <Zap size={13} style={{ color: '#1E4DB7', flexShrink: 0 }} />
+        <p className="text-xs" style={{ color: '#1E4DB7' }}>
+          <strong>Avg: {avgMonthlyUnits.toFixed(0)} units/month</strong>
+          <span style={{ color: '#64748B' }}> · Suggested: {suggestedCapacity} kW</span>
         </p>
       </div>}
-
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-      <div className="space-y-3">
-        <div className="grid grid-cols-2 gap-3">
-          <div><FieldLabel>First Name</FieldLabel><Input value={custFirstName} onChange={e => setCustFirstName(e.target.value)} placeholder="Rajesh" readOnly={inputMode === 'bill' && !!uploadedBill} style={inputMode === 'bill' && uploadedBill ? {
-              backgroundColor: '#F0F4F8',
-              color: '#64748B'
-            } : {}} /></div>
-          <div><FieldLabel>Last Name</FieldLabel><Input value={custLastName} onChange={e => setCustLastName(e.target.value)} placeholder="Patil" readOnly={inputMode === 'bill' && !!uploadedBill} style={inputMode === 'bill' && uploadedBill ? {
-              backgroundColor: '#F0F4F8',
-              color: '#64748B'
-            } : {}} /></div>
-        </div>
-        <div><FieldLabel>Address</FieldLabel><textarea value={custAddress} onChange={e => setCustAddress(e.target.value)} rows={2} placeholder="Plot 12, Shivaji Nagar, Pune" className="w-full px-3 py-2 rounded-lg text-sm outline-none resize-none" style={{
-            backgroundColor: inputMode === 'bill' && uploadedBill ? '#F0F4F8' : 'white',
-            border: '1.5px solid #E2E8F0',
-            color: inputMode === 'bill' && uploadedBill ? '#64748B' : '#0B1E3D'
-          }} readOnly={inputMode === 'bill' && !!uploadedBill} /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div><FieldLabel>Phone Number <span className="font-normal text-xs" style={{
-                color: '#94A3B8'
-              }}>(manual)</span></FieldLabel><Input type="tel" value={custPhone} onChange={e => setCustPhone(e.target.value)} placeholder="+91 98765 43210" /></div>
-          <div><FieldLabel>Consumer No.</FieldLabel><Input value={custConsumerNo} onChange={e => setCustConsumerNo(e.target.value)} placeholder="MH042300123456" readOnly={inputMode === 'bill' && !!uploadedBill} style={inputMode === 'bill' && uploadedBill ? {
-              backgroundColor: '#F0F4F8',
-              color: '#64748B'
-            } : {}} /></div>
-        </div>
-        <div><FieldLabel>Location (City, State)</FieldLabel><Input value={custLocation} onChange={e => setCustLocation(e.target.value)} placeholder="Pune, Maharashtra" /></div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <FieldLabel>Site Type</FieldLabel>
-            <Select opts={SITE_TYPE_OPTIONS} value={siteType} onChange={e => setSiteType(e.target.value)} />
-          </div>
-          <div>
-            <FieldLabel>Billing Type</FieldLabel>
-            <Select opts={BILLING_TYPE_OPTIONS} value={billingType} onChange={e => {
-              setBillingType(e.target.value);
-              setCustSanctionLoad('');
-            }} />
-          </div>
-        </div>
-
-        {/* PM Surya Ghar Notice */}
-        {isPMSuryaEligible && <div className="px-3 py-2.5 rounded-xl flex items-start gap-2.5" style={{
-          background: 'rgba(255,184,0,0.06)',
-          border: '1.5px solid rgba(255,184,0,0.3)'
-        }}>
-            <Sun size={14} style={{
-            color: '#B45309',
-            flexShrink: 0,
-            marginTop: 1
-          }} />
-            <p className="text-xs leading-relaxed" style={{
-            color: '#92400E'
-          }}>
-              <strong>Important:</strong>
-              <span> Only these categories are eligible for PM Surya Ghar Yojna: </span>
-              <strong>LT-I A</strong> (Residential 1-Phase Domestic), <strong>LT-I B</strong> (Residential 3-Phase Domestic), <strong>LT-I C</strong> (Commercial 1-Phase Small Business).
-            </p>
-          </div>}
-
-        <div>
-          <FieldLabel>Sanction Load</FieldLabel>
-          <div className="relative">
-            <Zap size={13} className="pointer-events-none" style={{
-              position: 'absolute',
-              left: 12,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: '#94A3B8',
-              zIndex: 1
-            }} />
-            <select value={custSanctionLoad} onChange={e => setCustSanctionLoad(e.target.value)} className="w-full pl-9 pr-8 py-2 rounded-lg text-sm outline-none appearance-none" style={{
-              backgroundColor: 'white',
-              border: '1.5px solid #E2E8F0',
-              color: custSanctionLoad ? '#0B1E3D' : '#94A3B8',
-              cursor: 'pointer',
-              readOnly: inputMode === 'bill' && !!uploadedBill
-            } as React.CSSProperties}>
-              <option value="">Select Sanction Load</option>
-              {filteredSanctionLoadOptions.map(opt => <option key={opt.value} value={opt.value}>{opt.label} {opt.phases.length === 1 ? `(${opt.phases[0]} only)` : ''}</option>)}
-            </select>
-            <ChevronDown size={13} className="pointer-events-none" style={{
-              position: 'absolute',
-              right: 9,
-              top: '50%',
-              transform: 'translateY(-50%)',
-              color: '#94A3B8'
-            }} />
-          </div>
-          {billingPhase !== 'both' && <p className="text-xs mt-1" style={{
-            color: '#7C5CFC'
-          }}>
-              <span>Filtered for </span><strong>{billingPhase}</strong><span> billing — incompatible loads hidden</span>
-            </p>}
-        </div>
-
-        {inputMode === 'bill' && <div>
-          <FieldLabel>Upload Electricity Bill</FieldLabel>
-          <input ref={billFileRef} type="file" accept="image/*,.pdf" className="hidden" onChange={e => {
-            const file = e.target.files?.[0];
-            if (!file) return;
-            setUploadedBillName(file.name);
-            const reader = new FileReader();
-            reader.onload = ev => setUploadedBill(ev.target?.result as string);
-            reader.readAsDataURL(file);
-          }} />
-          {uploadedBill ? <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg" style={{
-            backgroundColor: 'rgba(124,92,252,0.06)',
-            border: '1.5px solid rgba(124,92,252,0.2)'
-          }}>
-            <img src={uploadedBill} alt="Uploaded electricity bill" className="w-10 h-10 rounded-md object-cover flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <p className="text-xs font-semibold truncate" style={{
-                color: '#5B38E8'
-              }}>{uploadedBillName}</p>
-              <p className="text-xs" style={{
-                color: '#94A3B8'
-              }}>Bill uploaded — fields auto-filled</p>
-            </div>
-            <button onClick={() => {
-              setUploadedBill(null);
-              setUploadedBillName(null);
-            }} className="w-6 h-6 rounded-full flex items-center justify-center" style={{
-              backgroundColor: 'rgba(239,68,68,0.1)',
-              color: '#EF4444'
-            }}><X size={11} /></button>
-          </div> : <button type="button" onClick={() => billFileRef.current?.click()} className="w-full flex items-center gap-3 px-3 py-3 rounded-lg" style={{
-            backgroundColor: '#F8FAFC',
-            border: '1.5px dashed #CBD5E1'
-          }}>
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{
-              backgroundColor: '#EDE9FE',
-              color: '#7C5CFC'
-            }}><Upload size={14} /></div>
-            <div className="text-left">
-              <p className="text-xs font-semibold" style={{
-                color: '#374151'
-              }}>Click to upload bill image</p>
-              <p className="text-xs" style={{
-                color: '#94A3B8'
-              }}>JPG, PNG or PDF · Max 5 MB</p>
-            </div>
-            <Image size={14} className="ml-auto flex-shrink-0" style={{
-              color: '#CBD5E1'
-            }} />
-          </button>}
-        </div>}
-      </div>
-
-      <div>
-        <FieldLabel>Monthly Units (Jan – Dec)</FieldLabel>
-        <div className="rounded-lg overflow-hidden" style={{
-          border: '1.5px solid #E2E8F0'
-        }}>
-          <div className="grid" style={{
-            gridTemplateColumns: 'repeat(4, 1fr)'
-          }}>
-            {['Month', 'Units', 'Month', 'Units'].map((h, hi) => <div key={`${h}-${hi}`} className="px-2 py-2 text-xs font-bold text-center" style={{
-              backgroundColor: '#F8FAFC',
-              borderBottom: '1px solid #E2E8F0',
-              borderLeft: hi > 0 ? '1px solid #E2E8F0' : 'none',
-              color: '#0B1E3D'
-            }}>{h}</div>)}
-          </div>
-          {[0, 1, 2, 3, 4, 5].map(row => {
-            const m1 = BILLING_MONTHS[row];
-            const m2 = BILLING_MONTHS[row + 6];
-            return <div key={m1.id} className="grid" style={{
-              gridTemplateColumns: 'repeat(4, 1fr)',
-              borderBottom: row < 5 ? '1px solid #F1F5F9' : 'none'
-            }}>
-              <div className="px-2 py-1.5 flex items-center"><span className="text-xs font-medium" style={{
-                  color: '#374151'
-                }}>{m1.label}</span></div>
-              <div className="px-2 py-1" style={{
-                borderLeft: '1px solid #F1F5F9'
-              }}>
-                <input type="number" value={monthlyUnits[m1.id] || ''} onChange={e => setMonthlyUnits(prev => ({
-                  ...prev,
-                  [m1.id]: e.target.value
-                }))} className="w-full px-2 py-1 rounded text-xs outline-none text-center" style={{
-                  backgroundColor: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
-                  color: '#0B1E3D'
-                }} aria-label={`Units for ${m1.label}`} />
-              </div>
-              <div className="px-2 py-1.5 flex items-center" style={{
-                borderLeft: '1px solid #F1F5F9'
-              }}><span className="text-xs font-medium" style={{
-                  color: '#374151'
-                }}>{m2.label}</span></div>
-              <div className="px-2 py-1" style={{
-                borderLeft: '1px solid #F1F5F9'
-              }}>
-                <input type="number" value={monthlyUnits[m2.id] || ''} onChange={e => setMonthlyUnits(prev => ({
-                  ...prev,
-                  [m2.id]: e.target.value
-                }))} className="w-full px-2 py-1 rounded text-xs outline-none text-center" style={{
-                  backgroundColor: '#F8FAFC',
-                  border: '1px solid #E2E8F0',
-                  color: '#0B1E3D'
-                }} aria-label={`Units for ${m2.label}`} />
-              </div>
-            </div>;
-          })}
-        </div>
-        {avgMonthlyUnits > 0 && <div className="flex items-center gap-3 mt-2 px-3 py-2 rounded-lg" style={{
-          backgroundColor: 'rgba(30,77,183,0.06)',
-          border: '1px solid rgba(30,77,183,0.15)'
-        }}>
-          <Zap size={13} style={{
-            color: '#1E4DB7',
-            flexShrink: 0
-          }} />
-          <p className="text-xs" style={{
-            color: '#1E4DB7'
-          }}>
-            <strong>Avg: {avgMonthlyUnits.toFixed(0)} units/month</strong>
-            <span style={{
-              color: '#64748B'
-            }}> · Suggested: {suggestedCapacity} kW</span>
-          </p>
-        </div>}
-        {uploadedBill && <div className="mt-3">
-          <div className="flex items-center justify-between mb-1.5">
-            <p className="text-xs font-semibold" style={{
-              color: '#374151'
-            }}>Bill Preview</p>
-            <button className="flex items-center gap-1 text-xs font-medium" style={{
-              color: '#7C5CFC'
-            }}><Printer size={11} /><span>Print</span></button>
-          </div>
-          <div className="rounded-xl overflow-hidden" style={{
-            border: '1.5px solid rgba(124,92,252,0.2)'
-          }}>
-            <div className="px-3 py-2 flex items-center justify-between" style={{
-              backgroundColor: 'rgba(124,92,252,0.06)',
-              borderBottom: '1px solid rgba(124,92,252,0.1)'
-            }}>
-              <span className="text-xs font-semibold" style={{
-                color: '#5B38E8'
-              }}>Electricity Bill</span>
-              <span className="text-xs" style={{
-                color: '#94A3B8'
-              }}>{uploadedBillName}</span>
-            </div>
-            <img src={uploadedBill} alt="Bill preview" className="w-full object-cover" style={{
-              maxHeight: 100
-            }} />
-          </div>
-        </div>}
-        {custSanctionLoad && <div className="mt-3 flex items-center gap-2.5 px-3 py-2.5 rounded-xl" style={{
-          background: 'rgba(30,77,183,0.05)',
-          border: '1px solid rgba(30,77,183,0.15)'
-        }}>
-          <Zap size={13} style={{
-            color: '#1E4DB7',
-            flexShrink: 0
-          }} />
-          <p className="text-xs" style={{
-            color: '#1E4DB7'
-          }}>
-            <strong>Sanction Load: {custSanctionLoad} kW</strong>
-            <span style={{
-              color: '#64748B'
-            }}> — will be compared against requested capacity in Step 2.</span>
-          </p>
-        </div>}
-      </div>
+      {custSanctionLoad && <div className="mt-3 flex items-center gap-2.5 px-3 py-2.5 rounded-xl" style={{ background: 'rgba(30,77,183,0.05)', border: '1px solid rgba(30,77,183,0.15)' }}>
+        <Zap size={13} style={{ color: '#1E4DB7', flexShrink: 0 }} />
+        <p className="text-xs" style={{ color: '#1E4DB7' }}>
+          <strong>Sanction Load: {custSanctionLoad} kW</strong>
+          <span style={{ color: '#64748B' }}> — will be compared against requested capacity in Step 2.</span>
+        </p>
+      </div>}
     </div>
 
     <div className="flex items-center justify-end mt-5 pt-4" style={{
@@ -2741,6 +2619,63 @@ export const SolarDashboard: React.FC<DashboardProps> = ({
               }}>{panel.dimensions}</p></div>
           </div>)}
         </div>
+
+        {/* Panel Count Control */}
+        {custSanctionLoad && (
+          <div className="mt-3 flex items-center justify-between px-3 py-2.5 rounded-lg" style={{
+            backgroundColor: 'rgba(30,77,183,0.04)',
+            border: '1.5px solid #E2E8F0'
+          }}>
+            <div>
+              <span className="text-xs font-bold" style={{ color: '#0B1E3D' }}>Panels Required: </span>
+              <span className="text-xs font-bold" style={{ color: '#1E4DB7' }}>{numPanels}</span>
+              <span className="text-xs" style={{ color: '#64748B' }}> (based on {custSanctionLoad} kW sanction load)</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={panelCount}
+                onChange={(e) => {
+                  setManualPanelOverride(true);
+                  setPanelCount(parseInt(e.target.value) || 0);
+                }}
+                className="border rounded px-2 py-1 w-16 text-xs text-center outline-none"
+                style={{
+                  borderColor: '#E2E8F0',
+                  backgroundColor: 'white'
+                }}
+                min={1}
+              />
+              {manualPanelOverride && (
+                <button
+                  onClick={() => setManualPanelOverride(false)}
+                  className="text-xs px-2 py-1 rounded"
+                  style={{
+                    backgroundColor: '#F1F5F9',
+                    color: '#64748B',
+                    border: '1px solid #E2E8F0'
+                  }}
+                >
+                  Reset
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Required Area Info */}
+        {numPanels > 0 && (
+          <div className="mt-2 px-3 py-2 rounded-lg" style={{
+            backgroundColor: '#F8FAFC',
+            border: '1px solid #E2E8F0'
+          }}>
+            <span className="text-xs" style={{ color: '#64748B' }}>Required Area: </span>
+            <span className="text-xs font-semibold" style={{ color: '#0B1E3D' }}>
+              {(numPanels * panelInfo.areaSqFt).toFixed(1)} sq ft
+            </span>
+            <span className="text-xs" style={{ color: '#94A3B8' }}> ({numPanels} panels × {panelInfo.areaSqFt} sq ft/panel)</span>
+          </div>
+        )}
       </div>
     </div>
 
